@@ -275,6 +275,74 @@ const GlyphsNamingCalculator = () => {
     }));
   };
 
+  const copyAsGlyphsInstances = () => {
+    // Format instances for Glyphs app property list format
+    const glyphsFormat = `{
+instances = (
+${generateInstances.map(instance => {
+  const axesValues = axes.map(axis => instance.instance[axis]).join(',\n');
+  const axisLocation = axes.map(axis => {
+    const axisName = commonAxes[axis]?.name || axis;
+    return `{
+Axis = "${axisName}";
+Location = ${instance.instance[axis]};
+}`;
+  }).join(',\n');
+
+  return `{
+axesValues = (
+${axesValues}
+);
+customParameters = (
+{
+name = "Axis Location";
+value = (
+${axisLocation}
+);
+}
+);
+name = "${instance.styleName}";
+properties = (
+{
+key = familyNames;
+values = (
+{
+language = dflt;
+value = "${instance.familyName}";
+}
+);
+},
+{
+key = variableStyleNames;
+values = (
+{
+language = dflt;
+value = "${instance.variableStyleName}";
+}
+);
+},
+{
+key = WWSFamilyName;
+value = "${instance.familyName}";
+},
+{
+key = WWSSubfamilyName;
+value = "${instance.styleName}";
+}
+);
+}`;
+}).join(',\n')}
+);
+}`;
+    
+    navigator.clipboard.writeText(glyphsFormat).then(() => {
+      // You could add a toast notification here if desired
+      console.log('Copied to clipboard as Glyphs instances format');
+    }).catch(err => {
+      console.error('Failed to copy to clipboard:', err);
+    });
+  };
+
   const getContextualTips = () => {
     const tips = [];
     
@@ -737,6 +805,21 @@ const GlyphsNamingCalculator = () => {
               </tbody>
             </table>
           </div>
+          
+          {/* Copy as Glyphs Instances Button */}
+          {generateInstances.length > 0 && (
+            <div className="p-4 border-t border-slate-200">
+              <button
+                onClick={copyAsGlyphsInstances}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 mx-auto"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy as Glyphs Instances
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer Info */}
