@@ -67,7 +67,12 @@ const GlyphsNamingCalculator = () => {
     return saved ? JSON.parse(saved) : {};
   });
 
-  const [tipsExpanded, setTipsExpanded] = useState(false);
+  const [axisRegularElidable, setAxisRegularElidable] = useState(() => {
+    const saved = localStorage.getItem('fontHelper_axisRegularElidable');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [showTipsConsole, setShowTipsConsole] = useState(false);
 
   // Save to localStorage whenever state changes
   useEffect(() => {
@@ -89,6 +94,10 @@ const GlyphsNamingCalculator = () => {
   useEffect(() => {
     localStorage.setItem('fontHelper_axisSubfamilies', JSON.stringify(axisSubfamilies));
   }, [axisSubfamilies]);
+
+  useEffect(() => {
+    localStorage.setItem('fontHelper_axisRegularElidable', JSON.stringify(axisRegularElidable));
+  }, [axisRegularElidable]);
 
   const commonAxes = {
     wght: { name: 'Weight', default: '100,200,300,400,500,600,700,800,900' },
@@ -115,6 +124,11 @@ const GlyphsNamingCalculator = () => {
     // Process axes in the order they appear in the axes array
     axes.forEach(axis => {
       if (values[axis] !== undefined) {
+        // Skip axes that are set to subfamily mode
+        if (axisSubfamilies[axis]) {
+          return;
+        }
+        
         const mappedName = axisNameMappings[axis]?.[values[axis]];
         
         // Special handling for wdth - skip if it's the default value (100)
@@ -122,11 +136,19 @@ const GlyphsNamingCalculator = () => {
           // Only add if there's a custom mapping that isn't the default 'Regular' or '-'
           if (mappedName && mappedName !== 'Regular' && mappedName !== '-') {
             parts.push(mappedName);
+          } else if (mappedName === 'Regular' && !axisRegularElidable['wght']) {
+            // Add "Regular" only if Regular elidable is not enabled
+            parts.push(mappedName);
           }
         } else {
           // For all other axes (including wght)
           if (mappedName && mappedName !== '-') {
-            parts.push(mappedName);
+            // Special handling: skip "Regular" from any axis if "Consider Regular elidable" is checked for wght
+            if (mappedName === 'Regular' && axisRegularElidable['wght']) {
+              // Skip adding "Regular" when elidable option is enabled
+            } else {
+              parts.push(mappedName);
+            }
           } else if (!mappedName && axis !== 'wdth') {
             // Fallback to axis+value format, but skip for wdth when it's 100
             parts.push(`${axis}${values[axis]}`);
@@ -136,7 +158,87 @@ const GlyphsNamingCalculator = () => {
       }
     });
     
+    // Style Name should never be empty - always fall back to 'Regular'
     return parts.length > 0 ? parts.join(' ') : 'Regular';
+  };
+
+  const getFamilyName = (values) => {
+    const familyParts = [familyName];
+    
+    // Process axes in the order they appear in the axes array
+    axes.forEach(axis => {
+      if (values[axis] !== undefined && axisSubfamilies[axis]) {
+        const mappedName = axisNameMappings[axis]?.[values[axis]];
+        
+        // Special handling for wdth - skip if it's the default value (100)
+        if (axis === 'wdth' && values[axis] === 100) {
+          // Only add if there's a custom mapping that isn't the default 'Regular' or '-'
+          if (mappedName && mappedName !== 'Regular' && mappedName !== '-') {
+            familyParts.push(mappedName);
+          } else if (mappedName === 'Regular' && !axisRegularElidable['wght']) {
+            // Add "Regular" only if Regular elidable is not enabled
+            familyParts.push(mappedName);
+          }
+        } else {
+          // For all other axes
+          if (mappedName && mappedName !== '-') {
+            // Special handling: skip "Regular" from any axis if "Consider Regular elidable" is checked for wght
+            if (mappedName === 'Regular' && axisRegularElidable['wght']) {
+              // Skip adding "Regular" when elidable option is enabled
+            } else {
+              familyParts.push(mappedName);
+            }
+          } else if (!mappedName && axis !== 'wdth') {
+            // Fallback to axis+value format, but skip for wdth when it's 100
+            familyParts.push(`${axis}${values[axis]}`);
+          }
+        }
+      }
+    });
+    
+    return familyParts.join(' ');
+  };
+
+  const getVariableStyleName = (values) => {
+    const parts = [];
+    
+    // For variable style name, include ALL axes regardless of subfamily settings
+    axes.forEach(axis => {
+      if (values[axis] !== undefined) {
+        const mappedName = axisNameMappings[axis]?.[values[axis]];
+        
+        // Special handling for wdth - skip if it's the default value (100)
+        if (axis === 'wdth' && values[axis] === 100) {
+          // Only add if there's a custom mapping that isn't the default 'Regular' or '-'
+          if (mappedName && mappedName !== 'Regular' && mappedName !== '-') {
+            parts.push(mappedName);
+          } else if (mappedName === 'Regular' && !axisRegularElidable['wght']) {
+            // Add "Regular" only if Regular elidable is not enabled
+            parts.push(mappedName);
+          }
+        } else {
+          // For all other axes (including wght)
+          if (mappedName && mappedName !== '-') {
+            // Special handling: skip "Regular" from any axis if "Consider Regular elidable" is checked for wght
+            if (mappedName === 'Regular' && axisRegularElidable['wght']) {
+              // Skip adding "Regular" when elidable option is enabled
+            } else {
+              parts.push(mappedName);
+            }
+          } else if (!mappedName && axis !== 'wdth') {
+            // Fallback to axis+value format, but skip for wdth when it's 100
+            parts.push(`${axis}${values[axis]}`);
+          }
+          // If mappedName is '-', we skip adding it (unnamed default)
+        }
+      }
+    });
+    
+    // If no parts remain and Regular elidable is enabled, return empty string instead of 'Regular'
+    if (parts.length === 0) {
+      return axisRegularElidable['wght'] ? '' : 'Regular';
+    }
+    return parts.join(' ');
   };
 
   const updateAxisNameMapping = (axis, value, name) => {
@@ -161,6 +263,13 @@ const GlyphsNamingCalculator = () => {
 
   const toggleAxisSubfamily = (axis) => {
     setAxisSubfamilies(prev => ({
+      ...prev,
+      [axis]: !prev[axis]
+    }));
+  };
+
+  const toggleAxisRegularElidable = (axis) => {
+    setAxisRegularElidable(prev => ({
       ...prev,
       [axis]: !prev[axis]
     }));
@@ -256,18 +365,33 @@ const GlyphsNamingCalculator = () => {
       }
     }
 
-    // Show hyphen tip when there are name mappings
-    const hasNameMappings = Object.values(axisNameMappings).some(mapping => 
-      Object.keys(mapping).length > 0
+    // Show hyphen tip when width 100 has a name or all opsz values have names
+    const width100HasName = axisNameMappings.wdth?.[100] && axisNameMappings.wdth[100] !== '-';
+    const opszValues = axes.includes('opsz') && axisValues.opsz 
+      ? axisValues.opsz.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v))
+      : [];
+    const allOpszHaveNames = opszValues.length > 0 && opszValues.every(value => 
+      axisNameMappings.opsz?.[value] && axisNameMappings.opsz[value] !== ''
     );
     
-    if (hasNameMappings && !tips.some(tip => tip.title.includes('hyphen') || tip.title.includes('default'))) {
+    if (width100HasName || allOpszHaveNames) {
       tips.push({
         type: 'tip',
         title: 'Default Value Naming',
         content: 'Use "-" (hyphen) to mark default values that shouldn\'t appear in style names (e.g., Regular width at 100, normal optical size). This follows the "Regular" elidable convention where default attributes are omitted from style names.'
       });
     }
+
+    // Show subfamily tips for axes that are set to split into subfamilies
+    Object.keys(axisSubfamilies).forEach(axis => {
+      if (axisSubfamilies[axis] && axes.includes(axis)) {
+        tips.push({
+          type: 'info',
+          title: `${axis.toUpperCase()} Subfamily Mode`,
+          content: `The ${axis} axis will create separate font families (e.g., "MyFont Condensed", "MyFont Extended") instead of style variants within a single family. This helps organize large families in font menus and follows Adobe's recommended subfamily approach.`
+        });
+      }
+    });
 
     return tips;
   };
@@ -357,6 +481,7 @@ const GlyphsNamingCalculator = () => {
         }
       });
       setAxisSubfamilies({});
+      setAxisRegularElidable({});
     }
     
     setAxes(newAxes);
@@ -390,37 +515,55 @@ const GlyphsNamingCalculator = () => {
     generateCombinations(axisValueArrays);
     
     return instances.map((instance, idx) => {
+      const familyName = getFamilyName(instance);
       const styleName = getStyleName(instance);
+      const variableStyleName = getVariableStyleName(instance);
       const axisCoords = axes.map(axis => `${axis}=${instance[axis]}`).join(' ');
       
       return {
         id: idx,
         instance,
+        familyName,
         styleName,
+        variableStyleName,
         axisCoords,
         fullName: `${familyName} ${styleName}`,
-        postScriptName: `${familyName.replace(/\s/g, '')}-${styleName.replace(/\s/g, '')}`,
-        variableStyleName: styleName
+        postScriptName: `${familyName.replace(/\s/g, '')}-${styleName.replace(/\s/g, '')}`
       };
     });
-  }, [familyName, axes, axisValues]);
+  }, [familyName, axes, axisValues, axisNameMappings, axisSubfamilies, axisRegularElidable]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="w-full">
-        {/* Desktop Layout: Sidebar + Main Content */}
-        <div className="flex flex-col lg:flex-row gap-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="w-full relative">
+        {/* Desktop Layout: Sidebar + Main Content + Tips Console */}
+        <div className="flex flex-col lg:flex-row gap-0 transition-all duration-300">
           {/* Left Sidebar - Font Configuration (30% on desktop) */}
-          <div className="lg:w-[30%] space-y-6">
-            <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="space-y-6 'lg:w-[30%] lg:h-screen lg:overflow-y-auto">
+            <div className="bg-white border-r border-slate-200 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-slate-800">Font Configuration</h2>
-                <button
-                  onClick={resetToDefaults}
-                  className="px-3 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
-                >
-                  Reset
-                </button>
+                <div className="flex items-center gap-2">
+                  {getContextualTips().length > 0 && (
+                    <button
+                      onClick={() => setShowTipsConsole(!showTipsConsole)}
+                      className={`px-3 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                        showTipsConsole 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                      }`}
+                    >
+                      <span className="w-2 h-2 bg-current rounded-full"></span>
+                      Tips ({getContextualTips().length})
+                    </button>
+                  )}
+                  <button
+                    onClick={resetToDefaults}
+                    className="px-3 py-1 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
           
           {/* Family Name */}
@@ -454,42 +597,6 @@ const GlyphsNamingCalculator = () => {
             </p>
           </div>
 
-          {/* Contextual Tips */}
-          {getContextualTips().length > 0 && (
-            <div className="mb-4">
-              <button
-                onClick={() => setTipsExpanded(!tipsExpanded)}
-                className="w-full flex items-center justify-between p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors text-left"
-              >
-                <span className="text-sm font-medium text-slate-700">
-                  💡 Tips & Recommendations ({getContextualTips().length})
-                </span>
-                <span className="text-slate-500">
-                  {tipsExpanded ? '−' : '+'}
-                </span>
-              </button>
-              
-              {tipsExpanded && (
-                <div className="mt-2 space-y-2">
-                  {getContextualTips().map((tip, index) => (
-                    <div key={index} className={`p-3 rounded border-l-4 ${
-                      tip.type === 'warning' ? 'bg-amber-50 border-amber-400' :
-                      tip.type === 'info' ? 'bg-blue-50 border-blue-400' :
-                      'bg-green-50 border-green-400'
-                    }`}>
-                      <p className={`text-xs font-semibold mb-1 ${
-                        tip.type === 'warning' ? 'text-amber-700' :
-                        tip.type === 'info' ? 'text-blue-700' :
-                        'text-green-700'
-                      }`}>{tip.title}</p>
-                      <p className="text-xs text-slate-600">{tip.content}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Axes Configuration */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -519,13 +626,19 @@ const GlyphsNamingCalculator = () => {
                           Split into subfamilies
                         </label>
                       )}
+                      {/* Regular elidable checkbox for weight axis */}
+                      {axis === 'wght' && (
+                        <label className="flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={axisRegularElidable[axis] || false}
+                            onChange={() => toggleAxisRegularElidable(axis)}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          Consider Regular elidable
+                        </label>
+                      )}
                     </div>
-                    <button
-                      onClick={() => removeAxis(axis)}
-                      className="text-red-500 hover:text-red-700 p-1"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
                   
                   {/* 50/50 Layout for Axis Values and Name Mappings */}
@@ -552,7 +665,7 @@ const GlyphsNamingCalculator = () => {
                       <label className="block text-xs font-medium text-slate-600 mb-1">
                         Value → Name Mappings
                       </label>
-                      <div className="space-y-1 max-h-32 overflow-y-auto border border-slate-200 rounded p-2 bg-white">
+                      <div className="space-y-2">
                         {axisValuesList.map(value => (
                           <div key={value} className="flex gap-2 items-center">
                             <span className="text-xs font-mono text-slate-600 w-10 flex-shrink-0">
@@ -563,17 +676,9 @@ const GlyphsNamingCalculator = () => {
                               type="text"
                               value={axisNameMappings[axis]?.[value] || ''}
                               onChange={(e) => updateAxisNameMapping(axis, value, e.target.value)}
-                              className="flex-1 px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                              className="flex-1 px-2 py-1 text-xs w-full border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                               placeholder="Name or -"
                             />
-                            {axisNameMappings[axis]?.[value] && (
-                              <button
-                                onClick={() => removeAxisNameMapping(axis, value)}
-                                className="text-red-400 hover:text-red-600 p-1"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
                           </div>
                         ))}
                         {axisValuesList.length === 0 && (
@@ -581,24 +686,9 @@ const GlyphsNamingCalculator = () => {
                             Add axis values to configure mappings
                           </p>
                         )}
-                        {axisValuesList.length > 0 && (
-                          <p className="text-xs text-slate-500 mt-1 italic text-center">
-                            💡 Use "-" for defaults that shouldn't appear in names
-                          </p>
-                        )}
                       </div>
                     </div>
                   </div>
-
-                  {/* Subfamily info */}
-                  {axisSubfamilies[axis] && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <p className="text-xs text-blue-700">
-                        <strong>Subfamily Mode:</strong> This axis will create separate font families (e.g., "MyFont Condensed", "MyFont Extended") 
-                        instead of style variants within a single family. This helps organize large families in font menus.
-                      </p>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -606,40 +696,40 @@ const GlyphsNamingCalculator = () => {
             </div>
           </div>
 
-        {/* Main Content Area - Output Section (70% on desktop) */}
-        <div className="lg:w-[70%]">
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-slate-800 mb-4">
-              Generated Instances ({generateInstances.length})
-            </h2>
-          
+        {/* Main Content Area - Output Section (adjusts based on console) */}
+        <div className="lg:w-[70%] lg:h-screen lg:overflow-y-auto">
+          <div className="bg-white p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-100 border-b-2 border-slate-200">
+              <thead className="bg-slate-100 border-b-2 border-slate-200 z-10">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Axis Coordinates</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Style Name</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Variable Style Name</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Full Name</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">PostScript Name</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">Axis Coordinates</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">Family Name</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">Style Name</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">Variable Style Name</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">Full Name</th>
+                  <th className="px-2 py-1 text-left font-semibold text-slate-700">PostScript Name</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {generateInstances.map((instance) => (
                   <tr key={instance.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                    <td className="px-2 py-1 font-mono text-xs text-slate-600">
                       {instance.axisCoords}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2 py-1 text-slate-700">
+                      {instance.familyName}
+                    </td>
+                    <td className="px-2 py-1 text-slate-700">
                       {instance.styleName}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2 py-1 text-slate-700">
                       {instance.variableStyleName}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-2 py-1 text-slate-700">
                       {instance.fullName}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                    <td className="px-2 py-1 font-mono text-xs text-slate-600">
                       {instance.postScriptName}
                     </td>
                   </tr>
@@ -650,7 +740,7 @@ const GlyphsNamingCalculator = () => {
         </div>
 
         {/* Footer Info */}
-        <div className="mt-6 text-center text-sm text-slate-600">
+        <div className="p-6 text-center text-sm text-slate-600">
           <p>
             Based on Glyphs app naming conventions. For more details, visit{' '}
             <a 
@@ -665,6 +755,57 @@ const GlyphsNamingCalculator = () => {
         </div>
           </div>
         </div>
+
+        {/* Tips Console - Fixed Right Panel */}
+        {showTipsConsole && (
+          <div className="fixed top-6 right-6 bottom-6 w-80 bg-slate-900 text-slate-100 rounded-lg shadow-2xl border border-slate-700 flex flex-col z-50">
+            {/* Console Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                <span className="text-sm font-mono">Tips Console</span>
+                <span className="text-xs text-slate-400">({getContextualTips().length})</span>
+              </div>
+              <button
+                onClick={() => setShowTipsConsole(false)}
+                className="text-slate-400 hover:text-slate-200 text-lg"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Console Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 font-mono text-sm">
+              {getContextualTips().map((tip, index) => (
+                <div key={index} className="border-l-2 border-slate-600 pl-3">
+                  <div className={`text-xs uppercase tracking-wide mb-1 ${
+                    tip.type === 'warning' ? 'text-yellow-400' :
+                    tip.type === 'info' ? 'text-blue-400' :
+                    'text-green-400'
+                  }`}>
+                    [{tip.type}] {tip.title}
+                  </div>
+                  <div className="text-slate-300 text-xs leading-relaxed">
+                    {tip.content}
+                  </div>
+                </div>
+              ))}
+              
+              {getContextualTips().length === 0 && (
+                <div className="text-slate-500 text-center py-8">
+                  <div className="text-2xl mb-2">◯</div>
+                  <div>No tips available</div>
+                  <div className="text-xs">Configure your font to see recommendations</div>
+                </div>
+              )}
+            </div>
+
+            {/* Console Footer */}
+            <div className="p-3 border-t border-slate-700 text-xs text-slate-500">
+              Based on Glyphs naming conventions
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
